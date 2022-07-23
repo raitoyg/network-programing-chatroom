@@ -26,22 +26,29 @@ void sendMsg(int clientSocket);
 void recieveMsg(int clientSocket);
 
 int main() {
+    //SOCK_STREAM = TCP(reliable, connection oriented)
     if ((clientSocket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket: ");
         exit(-1);
     }
 
+    //Set up connection
     struct sockaddr_in client;
     client.sin_family = AF_INET;
     client.sin_port = htons(SERVER_PORT); // Port no. of server
     client.sin_addr.s_addr = INADDR_ANY;
     bzero(&client.sin_zero, 0);
 
+    //Catch error =0 equal success, -1 error, and start connection
     if ((connect(clientSocket, (struct sockaddr *) &client, sizeof(struct sockaddr_in))) == -1) {
         perror("connect: ");
         exit(-1);
     }
+
+    //Catching the Ctrl+C exit thing
     signal(SIGINT, catchExitKey);
+
+
     char name[MAX_LEN];
     cout << "Enter your name : ";
     cin.getline(name, MAX_LEN);
@@ -65,7 +72,8 @@ int main() {
 
 // Handler for Ctr C
 void catchExitKey(int signal) {
-    char str[MAX_LEN] = "#exit";
+    //Send exit key to server
+    char str[MAX_LEN] = "exit()";
     send(clientSocket, str, sizeof(str), 0);
     exit_flag = true;
     threadSend.detach();
@@ -76,6 +84,7 @@ void catchExitKey(int signal) {
 
 // Erase text from terminal
 void eraseText(int cnt) {
+    //ASCII for backspace
     char back_space = 8;
     for (int i = 0; i < cnt; i++) {
         cout << back_space;
@@ -88,9 +97,12 @@ void sendMsg(int clientSocket) {
         cout << colors[1] << "You : " << defaultColor;
         char str[MAX_LEN];
         cin.getline(str, MAX_LEN);
+
         send(clientSocket, str, sizeof(str), 0);
-        if (strcmp(str, "#exit") == 0) {
+        //if user type exit() then exit
+        if (strcmp(str, "exit()") == 0) {
             exit_flag = true;
+            //Detach thread and close socket
             threadRecieve.detach();
             close(clientSocket);
             return;
@@ -108,10 +120,14 @@ void recieveMsg(int clientSocket) {
         int bytes_received = recv(clientSocket, name, sizeof(name), 0);
         if (bytes_received <= 0)
             continue;
+
         //Recieving color codes of other users
         recv(clientSocket, &color_code, sizeof(color_code), 0);
         recv(clientSocket, str, sizeof(str), 0);
+
+        //Deleting the "You :", leaving behind only the name of the other user
         eraseText(6);
+
         if (strcmp(name, "#NULL") != 0)
             cout << colors[color_code] << name << " : " << defaultColor << str << endl;
         else

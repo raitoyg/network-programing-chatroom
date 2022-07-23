@@ -8,14 +8,15 @@
 #define PORT 1488
 using namespace std;
 
-struct terminal {
+struct Client {
     int id;
     string name;
     int socket;
     thread th;
 };
 
-vector <terminal> clients;
+
+vector <Client> clients;
 //ANSI Escape code colors
 string defaultColor = "\033[0m";
 string colors[] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m"};
@@ -33,6 +34,8 @@ void sendMsg(int num, int sender_id);
 void endConnection(int id);
 
 void handleClient(int clientSocket, int id);
+
+Client getClient(int id);
 
 int main() {
     int serverSocket;
@@ -69,8 +72,11 @@ int main() {
             perror("accept error: ");
             exit(-1);
         }
+        //Upon a new client connected start a new thread change seed
         seed++;
         thread t(handleClient, clientSocket, seed);
+
+        //Mutex lock here for Linux synchronization, ensuring two or more concurrent threads not executing the same chunk of code
         lock_guard <mutex> guard(clientMutex);
         clients.push_back({seed, string("Anonymous"), clientSocket, (move(t))});
     }
@@ -80,12 +86,27 @@ int main() {
 void setName(int id, char name[]) {
     for (int i = 0; i < clients.size(); i++) {
         if (clients[i].id == id) {
-            clients[i].name = string(name);
+            if (strlen(name) != 0) {
+                clients[i].name = string(name);
+            } else clients[i].name = "Anon";
         }
     }
 }
 
-// For synchronisation of cout statements
+//Get client object from vector
+Client getClient(int id) {
+    Client tmp;
+    for (int i = 0; i < clients.size(); i++) {
+        if (clients[i].id == id) {
+            tmp.id = clients[i].id;
+            tmp.name = clients[i].name;
+            return tmp;
+        }
+    }
+    return tmp;
+}
+
+// Synching the cout thing
 void sharedPrint(string str, bool endLine = true) {
     lock_guard <mutex> guard(coutMutex);
     cout << str;
@@ -93,7 +114,7 @@ void sharedPrint(string str, bool endLine = true) {
         cout << endl;
 }
 
-// Broadcast message to all clients except the sender
+// Send msgs to all except the sender
 void sendMsg(string message, int sender_id) {
     char temp[MAX_LEN];
     strcpy(temp, message.c_str());
@@ -127,11 +148,13 @@ void endConnection(int id) {
 
 void handleClient(int clientSocket, int id) {
     char name[MAX_LEN], str[MAX_LEN];
+    Client client;
     recv(clientSocket, name, sizeof(name), 0);
     setName(id, name);
 
-    // Display welcome message
-    string welcome_message = string(name) + string(" has joined");
+    client = getClient(id);
+    // Welcome msg
+    string welcome_message = client.name + string(" has joined");
     sendMsg("#NULL", id);
     sendMsg(id, id);
     sendMsg(welcome_message, id);
@@ -141,9 +164,9 @@ void handleClient(int clientSocket, int id) {
         int bytes_received = recv(clientSocket, str, sizeof(str), 0);
         if (bytes_received <= 0)
             return;
-        if (strcmp(str, "#exit") == 0) {
+        if (strcmp(str, "exit()") == 0) {
             // Display leaving message
-            string message = string(name) + string(" has left");
+            string message = client.name  + string(" has left");
             sendMsg("#NULL", id);
             sendMsg(id, id);
             sendMsg(message, id);
@@ -151,7 +174,7 @@ void handleClient(int clientSocket, int id) {
             endConnection(id);
             return;
         }
-        sendMsg(string(name), id);
+        sendMsg(client.name, id);
         sendMsg(id, id);
         sendMsg(string(str), id);
         sharedPrint(colors[0] + name + " : " + defaultColor + str);
