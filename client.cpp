@@ -10,7 +10,7 @@
 using namespace std;
 
 bool exit_flag = false;
-thread threadSend, threadRecieve;
+thread threadSend, threadreceive;
 int clientSocket;
 string defaultColor = "\033[0m";
 
@@ -23,7 +23,7 @@ void eraseText(int cnt);
 
 void sendMsg(int clientSocket);
 
-void recieveMsg(int clientSocket);
+void receiveMsg(int clientSocket);
 
 int main() {
     //SOCK_STREAM = TCP(reliable, connection oriented)
@@ -57,15 +57,15 @@ int main() {
     cout << colors[1] << "\n\t  ====== Welcome to the chat-room ======   " << endl << defaultColor;
 
     thread t1(sendMsg, clientSocket);
-    thread t2(recieveMsg, clientSocket);
+    thread t2(receiveMsg, clientSocket);
 
     threadSend = move(t1);
-    threadRecieve = move(t2);
+    threadreceive = move(t2);
 
     if (threadSend.joinable())
         threadSend.join();
-    if (threadRecieve.joinable())
-        threadRecieve.join();
+    if (threadreceive.joinable())
+        threadreceive.join();
 
     return 0;
 }
@@ -73,11 +73,11 @@ int main() {
 // Handler for Ctr C
 void catchExitKey(int signal) {
     //Send exit key to server
-    char str[MAX_LEN] = "exit()";
+    char str[MAX_LEN] = "/exit";
     send(clientSocket, str, sizeof(str), 0);
     exit_flag = true;
     threadSend.detach();
-    threadRecieve.detach();
+    threadreceive.detach();
     close(clientSocket);
     exit(signal);
 }
@@ -99,11 +99,11 @@ void sendMsg(int clientSocket) {
         cin.getline(str, MAX_LEN);
 
         send(clientSocket, str, sizeof(str), 0);
-        //if user type exit() then exit
-        if (strcmp(str, "exit()") == 0) {
+        //if user type exit then exit
+        if (strcmp(str, "/exit") == 0) {
             exit_flag = true;
             //Detach thread and close socket
-            threadRecieve.detach();
+            threadreceive.detach();
             close(clientSocket);
             return;
         }
@@ -111,7 +111,7 @@ void sendMsg(int clientSocket) {
 }
 
 // Receive message
-void recieveMsg(int clientSocket) {
+void receiveMsg(int clientSocket) {
     while (1) {
         if (exit_flag)
             return;
