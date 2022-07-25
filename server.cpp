@@ -3,15 +3,16 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <unistd.h>
-#include <vector>
-#include <iostream>
 
 #define MAX_LEN 256
 #define PORT 1488
 using namespace std;
 
+//Todo: Split into multiple files if there is time.
+
 struct Client {
     int id;
+    int roomId;
     string name;
     int socket;
     thread th;
@@ -24,12 +25,18 @@ struct Room {
 
 
 vector <Client> clients;
-vector <Room> rooms;
+vector <Room> rooms{
+        {0,"Global"}
+};
 
 vector <string> commands{
     "/send",
     "/listUsers",
-    "/exit"
+    "/exit",
+    "/createRoom",
+    "/listRooms",
+    "/join",
+    "/currentRoom"
 };
 
 //ANSI Escape code colors
@@ -38,25 +45,41 @@ string colors[] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "
 int seed = 0;
 mutex coutMutex, clientMutex;
 
-int setName(int id, char name[]);
+//Commandlines and messages functions
 
 void sharedPrint(string str, bool endLine);
 
-void sendMsg(string message, int sender_id);
 
-void sendColorCode(int num, int sender_id);
+//General chat
+void sendMsg(string message, int senderId,int roomId);
 
-void sendPm(string message, int sender_id);
+void sendColorCode(int num, int senderId, int roomId);
 
-void sendPmColorCode(int num, int sender_id);
+void sendPm(string message, int senderId);
+
+
+void sendPmColorCode(int num, int senderId);
+
+void getOnlineClients(int receiverId);
+
+void listRooms(int receiverId);
+
+
+//Server functions
+int setName(int id, char name[]);
 
 void endConnection(int id);
 
 void handleClient(int clientSocket, int id);
 
+void createRoom(int roomId, string roomName);
+
+
+
 //Utilities Functions
 Client getClient(int id);
 Client getClient(string id);
+Room getRoom(int id);
 
 vector<string> explode( const string &delimiter, const string &str);
 
@@ -101,7 +124,7 @@ int main() {
 
         //Mutex lock here for Linux synchronization, ensuring two or more concurrent threads not executing the same chunk of code
         lock_guard <mutex> guard(clientMutex);
-        clients.push_back({seed, string("Anon"), clientSocket, (move(t))});
+        clients.push_back({seed,0, string("Anon"), clientSocket, (move(t))});
     }
 }
 
@@ -139,6 +162,8 @@ vector<string> explode( const string &delimiter, const string &str)
 }
 
 // Set name of client
+//Todo: No need to check if name already exist. Use id to connect, not user name
+
 int setName(int id, char name[]) {
     for (int i = 0; i < clients.size(); i++) {
         if (clients[i].name == string(name)) {
@@ -189,39 +214,40 @@ void sharedPrint(string str, bool endLine = true) {
 }
 
 // Send msgs to all except the sender
-void sendMsg(string message, int sender_id) {
+void sendMsg(string message, int senderId,int roomId) {
     char tmp[MAX_LEN];
     strcpy(tmp, message.c_str());
     for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].id != sender_id) {
+        cout<<"ClientID: "<<clients[i].id<<" ClientRoom:"<<clients[i].roomId<<" Roomid:"<<roomId<<"\n";
+        if (clients[i].id != senderId&&clients[i].roomId==roomId) {
             send(clients[i].socket, tmp, sizeof(tmp), 0);
         }
     }
 }
 
 // Broadcast a number to all clients except the sender
-void sendColorCode(int num, int sender_id) {
+void sendColorCode(int num, int senderId,int roomId) {
     for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].id != sender_id) {
+        if (clients[i].id != senderId&&clients[i].roomId==roomId) {
             send(clients[i].socket, &num, sizeof(num), 0);
         }
     }
 }
 
 //Broadcast msg to specific client
-void sendPm(string message, int sender_id) {
+void sendPm(string message, int senderId) {
     char tmp[MAX_LEN];
     strcpy(tmp, message.c_str());
     for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].id == sender_id) {
+        if (clients[i].id == senderId) {
             send(clients[i].socket, tmp, sizeof(tmp), 0);
         }
     }
 }
 
-void sendPmColorCode(int num, int sender_id) {
+void sendPmColorCode(int num, int senderId) {
     for (int i = 0; i < clients.size(); i++) {
-        if (clients[i].id == sender_id) {
+        if (clients[i].id == senderId) {
             send(clients[i].socket, &num, sizeof(num), 0);
         }
     }
@@ -234,6 +260,29 @@ void getOnlineClients(int receiverId) {
         tmp+=clients[j].name+" : "+to_string(clients[j].id)+"\n";
     }
     sendPm(tmp.c_str(),receiverId);
+}
+
+//List rooms
+void listRooms(int receiverId) {
+    string tmp="Chatrooms :\n";
+    for (int j = 0; j < rooms.size(); j++) {
+        tmp+=rooms[j].name+" : "+to_string(rooms[j].id)+"\n";
+    }
+    sendPm(tmp.c_str(),receiverId);
+}
+
+//Get Room
+Room getRoom(int id){
+    Room tmp;
+    for (int i = 0; i < rooms.size(); i++) {
+        if (rooms[i].id == id) {
+            tmp.id = clients[i].id;
+            tmp.name = clients[i].name;
+            return tmp;
+        }
+    }
+    tmp.id = -1;
+    return tmp;
 }
 
 
@@ -249,20 +298,24 @@ void endConnection(int id) {
     }
 }
 
+void createRoom(int roomId,string roomName){
+    rooms.push_back({roomId, roomName});
+}
+
+
+
 void handleClient(int clientSocket, int id) {
     char name[MAX_LEN], str[MAX_LEN];
     Client client;
     recv(clientSocket, name, sizeof(name), 0);
-    if (setName(id, name)==-1){
-        cout<<"Name taken";
-    }
-
+    setName(id, name);
     client = getClient(id);
+    client.roomId = 0;
     // Welcome msg
     string welcome_message = client.name + string(" has joined");
-    sendMsg("#NULL", id);
-    sendColorCode(id, id);
-    sendMsg(welcome_message, id);
+    sendMsg("#NULL", id,client.roomId);
+    sendColorCode(id, id,client.roomId);
+    sendMsg(welcome_message, id,client.roomId);
     sharedPrint(colors[0] + welcome_message + defaultColor);
 
     while (1) {
@@ -271,29 +324,46 @@ void handleClient(int clientSocket, int id) {
             return;
 
         //Ekusplosion
+        //Todo: handle if input an incorrect command or string ie: /join/Nibber (/join|Userid), check if there are missing fields
         vector<string> strVector = explode("|", str);
 
+        //Exit from server
         if (strVector[0]==commands[2]) {
             // Display leaving message
             string message = client.name + string(" has left");
-            sendMsg("#NULL", id);
-            sendColorCode(id, id);
-            sendMsg(message, id);
+            sendMsg("#NULL", id,client.roomId);
+            sendColorCode(id, id,client.roomId);
+            sendMsg(message, id,client.roomId);
             sharedPrint(colors[0] + message + defaultColor);
             endConnection(id);
             return;
         }
 
+        //Get online users, use to get userId
         if (strVector[0]==commands[1]) {
             // Send response list of online users on server
             sendPm("#NULL",id);
             //Set the color here
             sendPmColorCode(3, id);
             getOnlineClients(id);
+            continue;
         }
 
+        //Todo: add a support function (/help) to list all commands
+
+        //get chatRooms, use to get chatroom id
+        if (strVector[0]==commands[4]){
+            // Send response list of online users on server
+            sendPm("#NULL",id);
+            //Set the color here
+            sendPmColorCode(3, id);
+            listRooms(id);
+            continue;
+        }
+
+        //Send Private msg
         if (strVector[0]==commands[0]) {
-            //Command format /send|UserID|Message
+            //Command format: /send|UserID|Message
             Client sender = getClient(id);
             //Handle Error
             Client receiver = getClient(stoi(strVector[1]));
@@ -302,11 +372,38 @@ void handleClient(int clientSocket, int id) {
             //Set the color here
             sendPmColorCode(3, receiver.id);
             sendPm(strVector[2],receiver.id);
-        } else {
-            sendMsg(client.name, id);
-            sendColorCode(id, id);
-            sendMsg(string(str), id);
-            sharedPrint(colors[0] + name + " : " + defaultColor + str);
+            continue;
         }
+
+        //Create chatroom
+        if (strVector[0]==commands[3]) {
+            //Command format: /createRoom|RoomID|RoomName
+            createRoom(stoi(strVector[1]),strVector[2]);
+            continue;
+        }
+
+        //Join chatroom
+        if (strVector[0]==commands[5]){
+            //Command format: /join|RoomID
+            //Todo: Handle if room not found, and add welcome message to room
+            for (int i = 0; i < clients.size(); i++) {
+                if (clients[i].id == id) {
+                    clients[i].roomId=stoi(strVector[1]);
+                }
+            }
+            //Change the local client id
+            client.roomId = stoi(strVector[1]);
+            continue;
+        }
+
+        //Get Current Room ID
+        if (strVector[0]==commands[6]){
+            cout<<client.roomId;
+        }
+        //Send normal messages
+        sendMsg(client.name, id,client.roomId);
+        sendColorCode(id, id,client.roomId);
+        sendMsg(string(str), id,client.roomId);
+        sharedPrint(colors[0] + name + " : " + defaultColor + str);
     }
 }
