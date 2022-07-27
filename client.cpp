@@ -17,6 +17,7 @@ string defaultColor = "\033[0m";
 //ANSI Escape code colors
 string colors[] = {"\033[31m", "\033[32m", "\033[33m", "\033[34m", "\033[35m", "\033[36m"};
 
+
 void catchExitKey(int signal);
 
 void eraseText(int cnt);
@@ -55,6 +56,14 @@ int main() {
     send(clientSocket, name, sizeof(name), 0);
 
     cout << colors[1] << "\n\t  ====== Welcome to the chat-room ======   " << endl << defaultColor;
+    cout <<"Starter Command\n"
+            "/exit                         ~End the chat session\n"<<
+            "/createRoom|RoomID|RoomName   ~Making a new room\n"<<
+            "/listRooms                    ~Print all rooms available\n"<<
+            "/join|RoomID                  ~Join an existing room\n"<<
+            "/help                         ~For list of all command\n"<<
+            "===========================================================\n"<<
+            "Please create or join a room to start chatting.\n"<<colors[4];
 
     thread t1(sendMsg, clientSocket);
     thread t2(receiveMsg, clientSocket);

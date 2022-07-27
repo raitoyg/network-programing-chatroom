@@ -3,6 +3,10 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <unistd.h>
+#include <iostream>
+#include <sstream>
+
+
 
 #define MAX_LEN 256
 #define PORT 1488
@@ -36,7 +40,21 @@ vector <string> commands{
     "/createRoom",
     "/listRooms",
     "/join",
-    "/currentRoom"
+    "/currentRoom",
+    "/help"
+
+}
+;
+vector <string> guide{
+        "No0. /send|userID|message\n",
+        "No1. /listUsers\n",
+        "No2. /exit\n",
+        "No3. /createRoom|RoomID|RoomName\n",
+        "No4. /listRooms\n",
+        "No5. /join|roomID\n",
+        "No6. /currentRoom\n",
+        "No7. /help\n"
+
 };
 
 //ANSI Escape code colors
@@ -118,6 +136,7 @@ int main() {
             perror("accept error: ");
             exit(-1);
         }
+
         //Upon a new client connected start a new thread change seed
         seed++;
         thread t(handleClient, clientSocket, seed);
@@ -271,6 +290,26 @@ void listRooms(int receiverId) {
     sendPm(tmp.c_str(),receiverId);
 }
 
+void sendHelp(int receiverId) {
+    string tmp="/help Menu :\n";
+    for (int j = 0; j < guide.size(); j++) {
+        tmp+=guide[j];
+
+    }
+    sendPm(tmp.c_str(),receiverId);
+}
+
+void currentRoom(int receiverId, int roomId){
+    string tmp="";
+    stringstream ss;
+    ss<<roomId;
+    ss>>tmp;
+    string name = rooms[roomId].name;
+    string msg = "You are now in room: " + name +" ~ID: " +tmp+"\n";
+    sendPm(msg,receiverId);
+
+}
+
 //Get Room
 Room getRoom(int id){
     Room tmp;
@@ -300,6 +339,7 @@ void endConnection(int id) {
 
 void createRoom(int roomId,string roomName){
     rooms.push_back({roomId, roomName});
+
 }
 
 
@@ -327,9 +367,11 @@ void handleClient(int clientSocket, int id) {
         //Todo: handle if input an incorrect command or string ie: /join/Nibber (/join|Userid), check if there are missing fields
         vector<string> strVector = explode("|", str);
 
+        bool flag= false;
         //Exit from server
         if (strVector[0]==commands[2]) {
             // Display leaving message
+            flag = true;
             string message = client.name + string(" has left");
             sendMsg("#NULL", id,client.roomId);
             sendColorCode(id, id,client.roomId);
@@ -342,6 +384,7 @@ void handleClient(int clientSocket, int id) {
         //Get online users, use to get userId
         if (strVector[0]==commands[1]) {
             // Send response list of online users on server
+            flag = true;
             sendPm("#NULL",id);
             //Set the color here
             sendPmColorCode(3, id);
@@ -354,6 +397,7 @@ void handleClient(int clientSocket, int id) {
         //get chatRooms, use to get chatroom id
         if (strVector[0]==commands[4]){
             // Send response list of online users on server
+            flag = true;
             sendPm("#NULL",id);
             //Set the color here
             sendPmColorCode(3, id);
@@ -364,6 +408,7 @@ void handleClient(int clientSocket, int id) {
         //Send Private msg
         if (strVector[0]==commands[0]) {
             //Command format: /send|UserID|Message
+            flag = true;
             Client sender = getClient(id);
             //Handle Error
             Client receiver = getClient(stoi(strVector[1]));
@@ -378,32 +423,76 @@ void handleClient(int clientSocket, int id) {
         //Create chatroom
         if (strVector[0]==commands[3]) {
             //Command format: /createRoom|RoomID|RoomName
+            flag = true;
             createRoom(stoi(strVector[1]),strVector[2]);
+            sendPm("#NULL",id);
+            //Set the color here
+            sendPmColorCode(3, id);
+            currentRoom(id,client.roomId);
             continue;
         }
 
         //Join chatroom
         if (strVector[0]==commands[5]){
             //Command format: /join|RoomID
-            //Todo: Handle if room not found, and add welcome message to room
+            flag = true;
+            //Todo: Handle if room not found, and add welcome message to room~~(Room will be created if not exist yet, not bug, feature)
             for (int i = 0; i < clients.size(); i++) {
                 if (clients[i].id == id) {
                     clients[i].roomId=stoi(strVector[1]);
                 }
             }
+
             //Change the local client id
             client.roomId = stoi(strVector[1]);
+            sendPm("#NULL",id);
+            //Set the color here
+            sendPmColorCode(3, id);
+                currentRoom(id,client.roomId);
             continue;
+
         }
 
         //Get Current Room ID
         if (strVector[0]==commands[6]){
-            cout<<client.roomId;
+            // Send response list of online users on server
+            flag = true;
+            sendPm("#NULL",id);
+            //Set the color here
+            sendPmColorCode(3, id);
+            currentRoom(id,client.roomId);
+            continue;
         }
+
+
+        if (strVector[0]==commands[7]){
+            // Send response list of online users on server
+            flag = true;
+            sendPm("#NULL",id);
+            //Set the color here
+            sendPmColorCode(3, id);
+            sendHelp(id);
+            continue;
+
+        }
+        string mpt = strVector[0];
+        char mp = '/';
+        if (flag == false)
+            if (mpt[0]==mp){
+
+            sendPm("#NULL",id);
+            //Set the color here
+            sendPmColorCode(3, id);
+            sendPm("Wrong command!\n", id);
+
+        }
+
         //Send normal messages
         sendMsg(client.name, id,client.roomId);
         sendColorCode(id, id,client.roomId);
         sendMsg(string(str), id,client.roomId);
         sharedPrint(colors[0] + name + " : " + defaultColor + str);
+
+
     }
 }
