@@ -1,0 +1,3 @@
+/home/asus/Documents/Work stuff/network-programing-chatroom/cmake-build-debug/CMakeFiles/network_programing_chatroom.dir
+/home/asus/Documents/Work stuff/network-programing-chatroom/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/asus/Documents/Work stuff/network-programing-chatroom/cmake-build-debug/CMakeFiles/rebuild_cache.dir
